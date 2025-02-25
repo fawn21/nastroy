@@ -21,7 +21,7 @@ MESSAGE_LIMIT = 5  # Ограничение на 5 сообщений в ден�
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Приветственное сообщение при запуске бота."""
-    await update.message.reply_text("Привет! Я бот, который отвечает на вопросы о здоровье. Просто напиши свой вопрос.")
+    await update.message.reply_text("привет) я переведу твои эмоции и мысли в язык гормонов и помогу вернуть их в норму. что сейчас происходит?")
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Основной обработчик сообщений."""
@@ -42,10 +42,10 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Отправляем запрос в OpenAI API
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4-turbo",
-            messages=user_contexts[user_id]["messages"]
-        )
+        response = openai.client().chat.completions.create(
+    model="gpt-4-turbo",
+    messages=user_contexts[user_id]["messages"]
+)
         reply = response["choices"][0]["message"]["content"]
         user_contexts[user_id]["messages"].append({"role": "assistant", "content": reply})
         await update.message.reply_text(reply)
