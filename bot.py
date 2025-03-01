@@ -3,7 +3,7 @@ import logging
 import openai
 import requests
 from fastapi import FastAPI, Request
-from telegram import Update, Bot
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from dotenv import load_dotenv
 import asyncio
@@ -22,15 +22,16 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Инициализируем Telegram-приложение
+# Создаём приложение python-telegram-bot
 app = Application.builder().token(TELEGRAM_TOKEN).build()
 
+# Храним переписку по user_id
 user_contexts = {}
 
-async def start(update: Update, context):
+async def start_command(update: Update, context):
     await update.message.reply_text("Привет! Я чат-бот на базе GPT. Задавай мне вопросы.")
 
-async def reset(update: Update, context):
+async def reset_command(update: Update, context):
     user_id = update.message.from_user.id
     user_contexts[user_id] = {"messages": [], "count": 0}
     await update.message.reply_text("Контекст сброшен.")
@@ -54,42 +55,49 @@ async def handle_message(update: Update, context):
         user_contexts[user_id]["messages"].append({"role": "assistant", "content": reply})
         await update.message.reply_text(reply)
     except Exception as e:
-        logging.error(f"Ошибка OpenAI: {e}")
+        logging.error(f"Ошибка при обращении к OpenAI: {e}")
         await update.message.reply_text("Произошла ошибка при обработке запроса.")
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("reset", reset))
+# Регистрируем хендлеры команд и сообщений
+app.add_handler(CommandHandler("start", start_command))
+app.add_handler(CommandHandler("reset", reset_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# FastAPI-приложение для вебхука
+# Создаём FastAPI-приложение для приёма вебхуков
 fastapi_app = FastAPI()
 
 @fastapi_app.get("/")
-def read_root():
+def root():
     return {"status": "ok"}
 
 @fastapi_app.post("/webhook")
 async def telegram_webhook(request: Request):
-    json_data = await request.json()
-    update = Update.de_json(json_data, app.bot)
-    # Обрабатываем обновление сразу:
+    """Эндпоинт, на который Telegram будет слать обновления."""
+    data = await request.json()
+    update = Update.de_json(data, app.bot)
+    # Теперь, когда приложение инициализировано и запущено, обрабатываем обновление:
     await app.process_update(update)
     return {"ok": True}
 
-# Функция установки вебхука
 async def set_webhook():
-    # Убираем возможный завершающий слэш, чтобы не было двойного слеша
-    url = WEBHOOK_URL.rstrip('/') + "/webhook"
-    data = {"url": url}
-    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook", json=data)
-    print("Webhook response:", response.json())
+    """Установить вебхук в Telegram (без двойного слэша)."""
+    webhook_endpoint = WEBHOOK_URL.rstrip('/') + "/webhook"
+    resp = requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
+        json={"url": webhook_endpoint}
+    )
+    logging.info(f"Webhook setup response: {resp.json()}")
 
-# Основная функция
 async def main():
-    await set_webhook()
-    # Инициализируем и запускаем Telegram-приложение (оно будет обрабатывать обновления)
+    """Основная точка входа: запускаем бот и сервер."""
+    # 1. Сначала инициализируем и запускаем телеграм-приложение:
     await app.initialize()
     await app.start()
+
+    # 2. Устанавливаем вебхук (теперь бот уже готов принимать запросы)
+    await set_webhook()
+
+    # 3. Запускаем Uvicorn, чтобы FastAPI начал слушать порт
     import uvicorn
     config = uvicorn.Config("bot:fastapi_app", host="0.0.0.0", port=PORT)
     server = uvicorn.Server(config)
