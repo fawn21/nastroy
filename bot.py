@@ -3,7 +3,6 @@ import logging
 import openai
 import requests
 from fastapi import FastAPI, Request
-from pydantic import BaseModel
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from dotenv import load_dotenv
@@ -23,6 +22,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+# Инициализируем Telegram-приложение
 app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 user_contexts = {}
@@ -61,37 +61,39 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("reset", reset))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# Webhook settings
+# FastAPI-приложение для вебхука
 fastapi_app = FastAPI()
 
-class WebhookRequest(BaseModel):
-    update_id: int
-    message: dict
+@fastapi_app.get("/")
+def read_root():
+    return {"status": "ok"}
 
 @fastapi_app.post("/webhook")
 async def telegram_webhook(request: Request):
     json_data = await request.json()
     update = Update.de_json(json_data, app.bot)
-    await app.update_queue.put(update)
+    # Обрабатываем обновление сразу:
+    await app.process_update(update)
     return {"ok": True}
 
-# Установка вебхука
+# Функция установки вебхука
 async def set_webhook():
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook"
-    data = {
-        "url": f"{WEBHOOK_URL}/webhook"
-    }
-    response = requests.post(url, json=data)
+    # Убираем возможный завершающий слэш, чтобы не было двойного слеша
+    url = WEBHOOK_URL.rstrip('/') + "/webhook"
+    data = {"url": url}
+    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook", json=data)
     print("Webhook response:", response.json())
 
-# Асинхронная установка вебхука внутри цикла
+# Основная функция
 async def main():
     await set_webhook()
+    # Инициализируем и запускаем Telegram-приложение (оно будет обрабатывать обновления)
+    await app.initialize()
+    await app.start()
     import uvicorn
     config = uvicorn.Config("bot:fastapi_app", host="0.0.0.0", port=PORT)
     server = uvicorn.Server(config)
     await server.serve()
 
-# Запуск основного цикла
 if __name__ == "__main__":
     asyncio.run(main())
