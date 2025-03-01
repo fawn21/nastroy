@@ -60,28 +60,15 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Контекст сброшен.")
 
 async def main():
-    """Запуск бота с использованием вебхуков."""
+    """Запуск бота."""
     app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.initialize()  # Исправление: добавил .initialize()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-
-    # Настройки для вебхуков
-    PORT = int(os.environ.get("PORT", "8443"))
-    WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/bot"
-
-    await app.start()
-    await app.bot.set_webhook(url=WEBHOOK_URL)
-    print("Бот запущен с использованием вебхуков...")
-
-    try:
-        await app.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path="/bot"
-        )
-    finally:
-        await app.stop()
+    
+    print("Бот запущен...")
+    await app.run_polling()  # Исправление: добавил await перед run_polling
 
 if __name__ == "__main__":
     import asyncio
