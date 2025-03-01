@@ -42,7 +42,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Отправляем запрос в OpenAI API
     try:
-        response = openai.client().chat.completions.create(
+        response = openai.ChatCompletion.create(
     model="gpt-4-turbo",
     messages=user_contexts[user_id]["messages"]
 )
