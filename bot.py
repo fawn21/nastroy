@@ -3,12 +3,16 @@ import openai
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Defaults
+from fastapi import FastAPI, Request
+from uvicorn import Config, Server
 from dotenv import load_dotenv
 
 # Загружаем переменные окружения
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Добавь этот URL в переменные окружения Render
 
 openai.api_key = OPENAI_API_KEY
 
@@ -18,6 +22,12 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 # Хранилище контекста пользователей
 user_contexts = {}
 MESSAGE_LIMIT = 5  # Ограничение на 5 сообщений в день
+
+# Создаём FastAPI приложение
+app = FastAPI()
+
+# Создаём бота с токеном и дефолтными параметрами
+application = Application.builder().token(TELEGRAM_TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Приветственное сообщение при запуске бота."""
@@ -59,15 +69,24 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_contexts[user_id] = {"messages": [], "count": 0}
     await update.message.reply_text("Контекст сброшен.")
 
+# Webhook обработчик для входящих запросов
+@app.post(f"/{TELEGRAM_TOKEN}")
+async def webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+
 def main():
-    """Запуск бота."""
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("reset", reset))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-    
-    print("Бот запущен...")
-    app.run_polling()
+    """Настройка Webhook и запуск сервера."""
+    # Устанавливаем Webhook
+    application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}")
+    # Добавляем обработчики команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("reset", reset))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+    # Запуск FastAPI сервера
+    server = Server(Config(app, host="0.0.0.0", port=8000))
+    server.run()
 
 if __name__ == "__main__":
     main()
