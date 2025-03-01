@@ -72,7 +72,7 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
     
     print("Бот запущен...")
-    await app.run_polling()  # Исправлено: добавлен await для асинхронного запуска
+    app.run_polling()  # Здесь убрал await
 
 if __name__ == "__main__":
     import asyncio
