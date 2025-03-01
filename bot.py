@@ -1,6 +1,7 @@
 import os
 import logging
 import openai
+import requests
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from telegram import Update, Bot
@@ -12,7 +13,7 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", "8443"))  # Поменяли порт на 8443
+PORT = int(os.getenv("PORT", "8443"))
 
 openai.api_key = OPENAI_API_KEY
 
@@ -66,12 +67,24 @@ class WebhookRequest(BaseModel):
     update_id: int
     message: dict
 
-@fastapi_app.post(f"/{TELEGRAM_TOKEN}")
+@fastapi_app.post("/webhook")
 async def telegram_webhook(request: Request):
     json_data = await request.json()
     update = Update.de_json(json_data, app.bot)
     await app.update_queue.put(update)
     return {"ok": True}
+
+# Установка вебхука
+async def set_webhook():
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook"
+    data = {
+        "url": f"{WEBHOOK_URL}/webhook"
+    }
+    response = requests.post(url, json=data)
+    print("Webhook response:", response.json())
+
+import asyncio
+asyncio.run(set_webhook())
 
 # Запуск веб-сервера
 if __name__ == "__main__":
