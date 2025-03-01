@@ -15,6 +15,11 @@ openai.api_key = OPENAI_API_KEY
 # Логирование ошибок
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
+# Проверка наличия токенов
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+    print("Ошибка: отсутствует TELEGRAM_TOKEN или OPENAI_API_KEY")
+    exit(1)
+
 # Хранилище контекста пользователей
 user_contexts = {}
 MESSAGE_LIMIT = 5  # Ограничение на 5 сообщений в день
@@ -25,7 +30,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Основной обработчик сообщений."""
-    user_id = update.message.chat_id
+    user_id = update.message.from_user.id  # Исправлено: chat_id заменено на from_user.id
     text = update.message.text
 
     # Проверяем лимит сообщений
@@ -43,9 +48,9 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Отправляем запрос в OpenAI API
     try:
         response = openai.ChatCompletion.create(
-    model="gpt-4-turbo",
-    messages=user_contexts[user_id]["messages"]
-)
+            model="gpt-4-turbo",
+            messages=user_contexts[user_id]["messages"]
+        )
         reply = response["choices"][0]["message"]["content"]
         user_contexts[user_id]["messages"].append({"role": "assistant", "content": reply})
         await update.message.reply_text(reply)
@@ -55,11 +60,11 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сброс контекста диалога."""
-    user_id = update.message.chat_id
+    user_id = update.message.from_user.id  # Исправлено: chat_id заменено на from_user.id
     user_contexts[user_id] = {"messages": [], "count": 0}
     await update.message.reply_text("Контекст сброшен.")
 
-def main():
+async def main():
     """Запуск бота."""
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
@@ -67,7 +72,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
     
     print("Бот запущен...")
-    app.run_polling()
+    await app.run_polling()  # Исправлено: добавлен await для асинхронного запуска
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())  # Исправлено: асинхронный запуск main()
