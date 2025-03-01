@@ -1,49 +1,46 @@
 import os
-import openai
 import logging
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import openai
 from fastapi import FastAPI, Request
-from uvicorn import run
+from pydantic import BaseModel
+from telegram import Update, Bot
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from dotenv import load_dotenv
 
-# Загружаем переменные окружения
 load_dotenv()
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 8443))
+PORT = int(os.getenv("PORT", "8443"))  # Поменяли порт на 8443
 
 openai.api_key = OPENAI_API_KEY
 
-# Логирование ошибок
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-# Хранилище контекста пользователей
+app = Application.builder().token(TELEGRAM_TOKEN).build()
+
 user_contexts = {}
-MESSAGE_LIMIT = 5  # Ограничение на 5 сообщений в день
 
-# Создаем FastAPI приложение
-app = FastAPI()
+async def start(update: Update, context):
+    await update.message.reply_text("Привет! Я чат-бот на базе GPT. Задавай мне вопросы.")
 
-# Создаем Telegram приложение
-telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
+async def reset(update: Update, context):
+    user_id = update.message.from_user.id
+    user_contexts[user_id] = {"messages": [], "count": 0}
+    await update.message.reply_text("Контекст сброшен.")
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("привет) я переведу твои эмоции и мысли в язык гормонов и помогу вернуть их в норму. что сейчас происходит?")
-
-async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.chat_id
-    text = update.message.text
+async def handle_message(update: Update, context):
+    user_id = update.message.from_user.id
+    message = update.message.text
 
     if user_id not in user_contexts:
         user_contexts[user_id] = {"messages": [], "count": 0}
 
-    if user_contexts[user_id]["count"] >= MESSAGE_LIMIT:
-        await update.message.reply_text("Вы исчерпали дневной лимит сообщений. Попробуйте завтра.")
-        return
-
-    user_contexts[user_id]["messages"].append({"role": "user", "content": text})
+    user_contexts[user_id]["messages"].append({"role": "user", "content": message})
     user_contexts[user_id]["count"] += 1
 
     try:
@@ -58,30 +55,25 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Ошибка OpenAI: {e}")
         await update.message.reply_text("Произошла ошибка при обработке запроса.")
 
-async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.chat_id
-    user_contexts[user_id] = {"messages": [], "count": 0}
-    await update.message.reply_text("Контекст сброшен.")
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("reset", reset))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(CommandHandler("reset", reset))
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+# Webhook settings
+fastapi_app = FastAPI()
 
-# Устанавливаем Webhook для Telegram
-async def set_webhook():
-    await telegram_app.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+class WebhookRequest(BaseModel):
+    update_id: int
+    message: dict
 
-@telegram_app.on_startup
-async def on_startup():
-    await set_webhook()
+@fastapi_app.post(f"/{TELEGRAM_TOKEN}")
+async def telegram_webhook(request: Request):
+    json_data = await request.json()
+    update = Update.de_json(json_data, app.bot)
+    await app.update_queue.put(update)
+    return {"ok": True}
 
-# Маршрут для Webhook
-@app.post("/webhook")
-async def handle_webhook(request: Request):
-    update = await request.json()
-    await telegram_app.update_queue.put(Update.de_json(update, telegram_app.bot))
-    return {"status": "ok"}
-
-# Запуск FastAPI сервера
+# Запуск веб-сервера
 if __name__ == "__main__":
-    run(app, host="0.0.0.0", port=PORT)
+    import uvicorn
+    uvicorn.run("bot:fastapi_app", host="0.0.0.0", port=PORT)
