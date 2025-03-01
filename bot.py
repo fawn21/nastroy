@@ -88,7 +88,9 @@ async def set_webhook():
 async def main():
     await set_webhook()
     import uvicorn
-    uvicorn.run("bot:fastapi_app", host="0.0.0.0", port=PORT)
+    config = uvicorn.Config("bot:fastapi_app", host="0.0.0.0", port=PORT)
+    server = uvicorn.Server(config)
+    await server.serve()
 
 # Запуск основного цикла
 if __name__ == "__main__":
