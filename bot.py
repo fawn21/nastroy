@@ -4,9 +4,9 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
+import asyncio
 
-# Загружаем переменные окружения
-load_dotenv()
+# Загружаем токены из переменных окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -14,11 +14,6 @@ openai.api_key = OPENAI_API_KEY
 
 # Логирование ошибок
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-
-# Проверка наличия токенов
-if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    print("Ошибка: отсутствует TELEGRAM_TOKEN или OPENAI_API_KEY")
-    exit(1)
 
 # Хранилище контекста пользователей
 user_contexts = {}
@@ -30,7 +25,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Основной обработчик сообщений."""
-    user_id = update.message.from_user.id  # Исправлено: chat_id заменено на from_user.id
+    user_id = update.message.chat_id
     text = update.message.text
 
     # Проверяем лимит сообщений
@@ -60,11 +55,11 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сброс контекста диалога."""
-    user_id = update.message.from_user.id  # Исправлено: chat_id заменено на from_user.id
+    user_id = update.message.chat_id
     user_contexts[user_id] = {"messages": [], "count": 0}
     await update.message.reply_text("Контекст сброшен.")
 
-async def main():
+def main():
     """Запуск бота."""
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
@@ -72,8 +67,7 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
     
     print("Бот запущен...")
-    app.run_polling()  # Здесь убрал await
+    app.run_polling()  # Без await, как требует новая версия библиотеки
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())  # Исправлено: асинхронный запуск main()
+    main()
