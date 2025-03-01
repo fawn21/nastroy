@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from dotenv import load_dotenv
+import asyncio
 
 load_dotenv()
 
@@ -83,10 +84,12 @@ async def set_webhook():
     response = requests.post(url, json=data)
     print("Webhook response:", response.json())
 
-import asyncio
-asyncio.run(set_webhook())
-
-# Запуск веб-сервера
-if __name__ == "__main__":
+# Асинхронная установка вебхука внутри цикла
+async def main():
+    await set_webhook()
     import uvicorn
     uvicorn.run("bot:fastapi_app", host="0.0.0.0", port=PORT)
+
+# Запуск основного цикла
+if __name__ == "__main__":
+    asyncio.run(main())
