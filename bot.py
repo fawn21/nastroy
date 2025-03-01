@@ -4,9 +4,9 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
-import asyncio
 
-# Загружаем токены из переменных окружения
+# Загружаем переменные окружения
+load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -59,15 +59,30 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_contexts[user_id] = {"messages": [], "count": 0}
     await update.message.reply_text("Контекст сброшен.")
 
-def main():
-    """Запуск бота."""
+async def main():
+    """Запуск бота с использованием вебхуков."""
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-    
-    print("Бот запущен...")
-    app.run_polling()  # Без await, как требует новая версия библиотеки
+
+    # Настройки для вебхуков
+    PORT = int(os.environ.get("PORT", "8443"))
+    WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/bot"
+
+    await app.start()
+    await app.bot.set_webhook(url=WEBHOOK_URL)
+    print("Бот запущен с использованием вебхуков...")
+
+    try:
+        await app.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path="/bot"
+        )
+    finally:
+        await app.stop()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
