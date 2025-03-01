@@ -59,17 +59,16 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_contexts[user_id] = {"messages": [], "count": 0}
     await update.message.reply_text("Контекст сброшен.")
 
-async def main():
+def main():
     """Запуск бота."""
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.initialize()  # Исправление: добавил .initialize()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-    
+
     print("Бот запущен...")
-    await app.run_polling()  # Исправление: добавил await перед run_polling
+    app.run_polling()  # Без await
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    asyncio.run(main())  # Попробуем так
