@@ -18,15 +18,14 @@ PORT = int(os.getenv("PORT", "8443"))
 
 # Устанавливаем ключ OpenAI и базовую модель
 openai.api_key = OPENAI_API_KEY
-BASE_MODEL = "gpt-4-turbo"  # Если ваш кастомный GPT основан на GPT-4 Omni, возможно, эту модель можно заменить на нужное имя
+BASE_MODEL = "gpt-4-turbo"  # Если ваш кастомный GPT построен на GPT‑4 Omni, уточните имя модели при необходимости
 
-# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# Основной системный промпт с инструкциями и Style Guide
+# Полностью перенесённый системный промпт с добавленным Style Guide
 CUSTOM_SYSTEM_PROMPT = r"""
 /описание:
 decodes emotions into neurochemical state & provides body-first interventions.
@@ -56,12 +55,6 @@ For each imbalance, the AI prescribes **three evidence-based physical interventi
 - **Low Dopamine:** Micro-win task, novelty exposure, power pose.
 - **Low Serotonin:** Sunlight exposure, rhythmic movement, weighted pressure.
 - **Low Oxytocin:** Humming, self-massage, pet or object interaction.
-
-Additionally, when offering **cognitive reframing phrases** (if relevant), the AI ensures they:
-1. **Sound natural and conversational**, avoiding philosophical or abstract wording.
-2. **Are simple and laconic**, resembling how people actually talk to themselves.
-3. **Use everyday vocabulary**, replacing uncommon terms (e.g., "allies") with natural alternatives (e.g., "friends").
-4. **Feel actionable**, suggesting a mindset shift that’s easy to apply (e.g., replacing "I play with reality today" with "I'm curious what happens").
 
 ### **Step 4: Follow-Up & Adjustment**
 The AI asks, "Did this protocol shift your state? If not, which physical or mental symptom remains dominant?" It adjusts biochemical labels and interventions accordingly.
@@ -100,18 +93,18 @@ The AI always responds in the user's language while maintaining scientific preci
 
 ### **Style Guide**
 - Обращайся на «ты».
-- Не используй Markdown-звёздочки (** **) или другие спецсимволы для форматирования списка (используй нумерацию или обычные абзацы).
-- Используй Markdown только для выделения ключевых моментов жирным (например, **важно**).
-- Если пользователь упоминает «тревога с утра», учитывай, что это утро – не задавай уточняющие вопросы о дневном состоянии, если это не требуется.
-- Отвечай в манере, максимально близкой к тому, как это делает Custom GPT, с подробным структурированным анализом и конкретными рекомендациями.
+- Не используй Markdown-звёздочки (** **) для форматирования списков; используй нумерацию или обычные абзацы.
+- Выделяй ключевые моменты жирным (например, **важно**) с помощью Markdown.
+- Если пользователь упоминает «тревога с утра», учитывай, что это утро – не задавай уточняющие вопросы о дневном состоянии, если их нет.
+- Отвечай кратко, конкретно и по делу, как это делает Custom GPT в предоставленных кейсах.
 
 """
 
-# Создаем приложение Telegram-бота через python-telegram-bot
+# Создаем приложение Telegram-бота с помощью python-telegram-bot
 app_telegram = Application.builder().token(TELEGRAM_TOKEN).build()
 
 # Словарь для хранения истории диалога для каждого пользователя.
-# Храним не более 10 последних сообщений (считаем и запросы, и ответы)
+# Будем хранить историю в виде списка сообщений (пользователь + бот).
 user_contexts = {}
 
 # Порог минимальной длины сообщения для определения недостатка контекста
@@ -119,9 +112,7 @@ MIN_MESSAGE_LENGTH = 50
 
 def trim_history(history, max_length=10):
     """Сохраняем только последние max_length сообщений."""
-    if len(history) > max_length:
-        return history[-max_length:]
-    return history
+    return history[-max_length:] if len(history) > max_length else history
 
 # Обработчик команды /start
 async def start_command(update: Update, context):
@@ -138,7 +129,7 @@ async def handle_message(update: Update, context):
     user_id = update.message.from_user.id
     user_msg = update.message.text.strip()
 
-    # Если истории нет, и сообщение слишком короткое, добавляем уточнение
+    # Если истории нет, и сообщение слишком короткое, добавляем уточняющую фразу
     if user_id not in user_contexts:
         user_contexts[user_id] = []
         if len(user_msg) < MIN_MESSAGE_LENGTH:
@@ -146,30 +137,26 @@ async def handle_message(update: Update, context):
 
     # Добавляем сообщение пользователя в историю
     user_contexts[user_id].append({"role": "user", "content": user_msg})
-    # Обрезаем историю до последних 10 сообщений
     user_contexts[user_id] = trim_history(user_contexts[user_id], max_length=10)
 
-    # Формируем запрос к OpenAI API: сначала системное сообщение, затем история диалога
-    messages = [{"role": "system", "content": CUSTOM_SYSTEM_PROMPT}]
-    messages.extend(user_contexts[user_id])
+    # Формируем запрос: системное сообщение + история диалога
+    messages = [{"role": "system", "content": CUSTOM_SYSTEM_PROMPT}] + user_contexts[user_id]
 
     try:
-        # Оптимизированный вызов API с возможным ограничением max_tokens
         response = openai.ChatCompletion.create(
             model=BASE_MODEL,
             messages=messages,
-            max_tokens=500,        # При необходимости можно скорректировать
+            max_tokens=500,
             temperature=0.7
         )
         reply = response["choices"][0]["message"]["content"].strip()
 
         # Добавляем ответ ассистента в историю
         user_contexts[user_id].append({"role": "assistant", "content": reply})
-        # Обрезаем историю, чтобы не было переполнения
         user_contexts[user_id] = trim_history(user_contexts[user_id], max_length=10)
 
-        # Отправляем ответ в Telegram с использованием Markdown
-        await update.message.reply_text(reply, parse_mode="Markdown")
+        # Отправляем ответ с MarkdownV2, чтобы сохранить форматирование
+        await update.message.reply_text(reply, parse_mode="MarkdownV2")
     except Exception as e:
         logging.error(f"Ошибка при обращении к OpenAI: {e}")
         await update.message.reply_text("Произошла ошибка при обработке запроса.")
@@ -179,7 +166,7 @@ app_telegram.add_handler(CommandHandler("start", start_command))
 app_telegram.add_handler(CommandHandler("reset", reset_command))
 app_telegram.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# Создаем приложение FastAPI для обработки вебхуков от Telegram
+# Создаем FastAPI-приложение для обработки вебхуков от Telegram
 fastapi_app = FastAPI()
 
 @fastapi_app.get("/")
