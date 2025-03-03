@@ -18,14 +18,13 @@ PORT = int(os.getenv("PORT", "8443"))
 
 # Устанавливаем ключ OpenAI и базовую модель
 openai.api_key = OPENAI_API_KEY
-BASE_MODEL = "gpt-4-turbo"  # Если ваш кастомный GPT построен на GPT‑4 Omni, уточните имя модели при необходимости
+BASE_MODEL = "gpt-4-turbo"  # Если ваш кастомный GPT построен на GPT‑4 Omni, уточните имя модели
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# Полностью перенесённый системный промпт с добавленным Style Guide
 CUSTOM_SYSTEM_PROMPT = r"""
 /описание:
 decodes emotions into neurochemical state & provides body-first interventions.
@@ -94,52 +93,41 @@ The AI always responds in the user's language while maintaining scientific preci
 ### **Style Guide**
 - Обращайся на «ты».
 - Не используй Markdown-звёздочки (** **) для форматирования списков; используй нумерацию или обычные абзацы.
-- Выделяй ключевые моменты жирным (например, **важно**) с помощью Markdown.
-- Если пользователь упоминает «тревога с утра», учитывай, что это утро – не задавай уточняющие вопросы о дневном состоянии, если их нет.
+- При необходимости выделяй ключевые моменты жирным (например, **важно**) обычным Markdown.
+- Если пользователь упоминает «тревога с утра», учитывай, что это утро – не задавай уточняющие вопросы о дне.
 - Отвечай кратко, конкретно и по делу, как это делает Custom GPT в предоставленных кейсах.
-
 """
 
-# Создаем приложение Telegram-бота с помощью python-telegram-bot
 app_telegram = Application.builder().token(TELEGRAM_TOKEN).build()
 
-# Словарь для хранения истории диалога для каждого пользователя.
-# Будем хранить историю в виде списка сообщений (пользователь + бот).
+# Словарь для хранения истории диалога
 user_contexts = {}
 
-# Порог минимальной длины сообщения для определения недостатка контекста
 MIN_MESSAGE_LENGTH = 50
 
 def trim_history(history, max_length=10):
-    """Сохраняем только последние max_length сообщений."""
     return history[-max_length:] if len(history) > max_length else history
 
-# Обработчик команды /start
 async def start_command(update: Update, context):
     await update.message.reply_text("Привет! Я бот, использующий кастомный GPT для биохимической рекалибровки. Задавай вопросы.")
 
-# Обработчик команды /reset для сброса истории диалога
 async def reset_command(update: Update, context):
     user_id = update.message.from_user.id
     user_contexts[user_id] = []
     await update.message.reply_text("Контекст сброшен.")
 
-# Обработчик входящих текстовых сообщений
 async def handle_message(update: Update, context):
     user_id = update.message.from_user.id
     user_msg = update.message.text.strip()
 
-    # Если истории нет, и сообщение слишком короткое, добавляем уточняющую фразу
     if user_id not in user_contexts:
         user_contexts[user_id] = []
         if len(user_msg) < MIN_MESSAGE_LENGTH:
             user_msg += "\nПожалуйста, расскажи подробнее о своих ощущениях и мыслях."
 
-    # Добавляем сообщение пользователя в историю
     user_contexts[user_id].append({"role": "user", "content": user_msg})
     user_contexts[user_id] = trim_history(user_contexts[user_id], max_length=10)
 
-    # Формируем запрос: системное сообщение + история диалога
     messages = [{"role": "system", "content": CUSTOM_SYSTEM_PROMPT}] + user_contexts[user_id]
 
     try:
@@ -151,22 +139,21 @@ async def handle_message(update: Update, context):
         )
         reply = response["choices"][0]["message"]["content"].strip()
 
-        # Добавляем ответ ассистента в историю
         user_contexts[user_id].append({"role": "assistant", "content": reply})
         user_contexts[user_id] = trim_history(user_contexts[user_id], max_length=10)
 
-        # Отправляем ответ с MarkdownV2, чтобы сохранить форматирование
-        await update.message.reply_text(reply, parse_mode="MarkdownV2")
+        # Используем Markdown вместо MarkdownV2, чтобы избежать ошибок парсинга
+        await update.message.reply_text(reply, parse_mode="Markdown")
     except Exception as e:
         logging.error(f"Ошибка при обращении к OpenAI: {e}")
         await update.message.reply_text("Произошла ошибка при обработке запроса.")
 
-# Регистрируем обработчики команд и сообщений
 app_telegram.add_handler(CommandHandler("start", start_command))
 app_telegram.add_handler(CommandHandler("reset", reset_command))
 app_telegram.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# Создаем FastAPI-приложение для обработки вебхуков от Telegram
+from fastapi import FastAPI
+
 fastapi_app = FastAPI()
 
 @fastapi_app.get("/")
@@ -180,7 +167,6 @@ async def telegram_webhook(request: Request):
     await app_telegram.process_update(update)
     return {"ok": True}
 
-# При запуске FastAPI инициализируем и запускаем Telegram-бот, затем устанавливаем вебхук
 @fastapi_app.on_event("startup")
 async def startup_event():
     await app_telegram.initialize()
@@ -192,7 +178,6 @@ async def startup_event():
     )
     logging.info(f"Webhook setup response: {resp.json()}")
 
-# Запускаем FastAPI-сервер через Uvicorn
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("bot:fastapi_app", host="0.0.0.0", port=PORT)
