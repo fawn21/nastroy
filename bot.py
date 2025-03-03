@@ -24,7 +24,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Кастомный системный промпт – полностью, без изменений
+# Полностью перенесённый кастомный системный промпт
+# В конце добавлен блок "Style Guide", чтобы уточнить формат и тон ответов
 CUSTOM_SYSTEM_PROMPT = r"""
 /описание:
 decodes emotions into neurochemical state & provides body-first interventions.
@@ -101,6 +102,13 @@ The AI always responds in the user's language while maintaining scientific preci
 ### **Formatting Restrictions**
 - **Prohibited:** Use of colored emojis, decorative symbols, or any non-text-based elements in responses.
 - **Strict Scientific Citations:** If a user requests a reference, the AI provides a verifiable citation from an authoritative English-language source.
+
+### Style Guide
+- Обращайся на «ты».
+- Не используй Markdown-звёздочки (** **) или другие спецсимволы для форматирования.
+- Пиши списки обычными абзацами или с нумерацией «1) … 2) …».
+- Если пользователь упоминает «тревога с утра», учитывай, что это текущее утро (не спрашивай про «что было днём» без повода).
+- Старайся отвечать в манере, максимально близкой к тому, как это делает кастомный GPT в предоставленных кейсах.
 """
 
 # Создаем приложение telegram-бота с помощью python-telegram-bot
@@ -111,7 +119,7 @@ user_contexts = {}
 
 # Обработчик команды /start
 async def start_command(update: Update, context):
-    await update.message.reply_text("Привет! Я бот, использующий кастомный GPT для биохимической рекалибровки. Задавайте вопросы.")
+    await update.message.reply_text("Привет! Я бот, использующий кастомный GPT для биохимической рекалибровки. Задавай вопросы.")
 
 # Обработчик команды /reset для сброса истории диалога
 async def reset_command(update: Update, context):
